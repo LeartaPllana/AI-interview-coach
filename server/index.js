@@ -103,7 +103,8 @@ function initialise() {
   initialisePromise = (async () => {
   if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.JWT_SECRET) throw new Error('DB_HOST, DB_USER and JWT_SECRET are required in .env')
   if (!/^[A-Za-z0-9_]+$/.test(databaseName)) throw new Error('Invalid DB_NAME')
-  const base = { host: process.env.DB_HOST, port: Number(process.env.DB_PORT || 3306), user: process.env.DB_USER, password: process.env.DB_PASSWORD }
+  const ssl = process.env.DB_SSL === 'true' ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' } : undefined
+  const base = { host: process.env.DB_HOST, port: Number(process.env.DB_PORT || 3306), user: process.env.DB_USER, password: process.env.DB_PASSWORD, ssl }
   const bootstrap = await mysql.createConnection(base); await bootstrap.query(`CREATE DATABASE IF NOT EXISTS \`${databaseName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`); await bootstrap.end()
   pool = mysql.createPool({ ...base, database: databaseName, waitForConnections: true, connectionLimit: 10, charset: 'utf8mb4' })
   await pool.query(`CREATE TABLE IF NOT EXISTS users (id CHAR(36) PRIMARY KEY, name VARCHAR(120) NOT NULL, email VARCHAR(190) NOT NULL UNIQUE, password_hash VARCHAR(255) NOT NULL, role ENUM('user','admin') NOT NULL DEFAULT 'user', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`)
