@@ -29,14 +29,6 @@ Before the first start, copy `.env.example` to `.env` and set your MySQL connect
 
 Open `http://localhost:5173/` to register or sign in. The root URL automatically shows authentication when no valid session exists; after sign-in, users are sent to their workspace and administrators to `/admin`. Completed practice answers are saved for signed-in users.
 
-Open `http://localhost:5173`.
-
-## Deploy on Netlify
-
-The frontend and API are deployed together. Netlify routes `/api/*` requests to the `api` function before the React SPA fallback, so validation errors are always returned as JSON.
-
-In **Site configuration → Environment variables**, add the same production values used by the API: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `JWT_SECRET`, and optionally `ADMIN_*`, `OPENAI_API_KEY`, and `OPENAI_MODEL`. The MySQL server must be externally reachable from Netlify; `localhost` only works during local development. For Aiven MySQL, also set `DB_SSL=true`.
-
 ## Next production steps
 
 Connect the Express services to the normalized MySQL schema from the project blueprint, add JWT authentication and refresh tokens, replace the demo endpoints with protected MVC routes, and attach the AI provider adapter to OpenAI or Ollama.
