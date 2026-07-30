@@ -23,6 +23,14 @@ const engineeringQuestions = [
   { category: 'Systems thinking', text: 'How would you decide whether to refactor an existing service or ship a targeted workaround?', hint: 'State the evidence and trade-offs you would use.' }
 ]
 
+async function readApiResponse(response) {
+  try {
+    return await response.json()
+  } catch {
+    return { error: { message: 'The API returned HTML instead of JSON. Check that the Netlify API function is deployed and its redirect is active.' } }
+  }
+}
+
 function Icon({ children }) { return <span className="icon" aria-hidden="true">{children}</span> }
 
 function Layout({ children, theme, setTheme, user, onLogout }) {
@@ -97,7 +105,7 @@ function Practice() {
     const session = JSON.parse(localStorage.getItem('interviewCoachSession') || 'null')
     if (!session?.token || !answerToEvaluate.trim() || saving || !q) return
     setSaving(true)
-    try { const response = await fetch('/api/v1/coach', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` }, body: JSON.stringify({ question: q.text, answer: answerToEvaluate, role, experience, previousAnswers: answers.map(item => ({ score: item.analysis?.score, question: item.question })) }) }); const body = await response.json(); if (!response.ok) throw new Error(body.error?.message); evaluatedAnswerRef.current = answerToEvaluate; setFeedback(body.data); if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const speech = new SpeechSynthesisUtterance(`Score ${body.data.score} out of 100. ${body.data.scoreReason || body.data.summary}. Strengths: ${(body.data.strengths || []).join(' ')}. Improvements: ${(body.data.improvements || []).join(' ')}`); speech.rate = 1.03; window.speechSynthesis.speak(speech) } } catch (error) { setNotice(error.message || 'AI analysis could not be completed.') } finally { setSaving(false) }
+    try { const response = await fetch('/api/v1/coach', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` }, body: JSON.stringify({ question: q.text, answer: answerToEvaluate, role, experience, previousAnswers: answers.map(item => ({ score: item.analysis?.score, question: item.question })) }) }); const body = await readApiResponse(response); if (!response.ok || body.error) throw new Error(body.error?.message); evaluatedAnswerRef.current = answerToEvaluate; setFeedback(body.data); if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const speech = new SpeechSynthesisUtterance(`Score ${body.data.score} out of 100. ${body.data.scoreReason || body.data.summary}. Strengths: ${(body.data.strengths || []).join(' ')}. Improvements: ${(body.data.improvements || []).join(' ')}`); speech.rate = 1.03; window.speechSynthesis.speak(speech) } } catch (error) { setNotice(error.message || 'AI analysis could not be completed.') } finally { setSaving(false) }
   }
   const startVoice = () => {
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -119,7 +127,7 @@ function Practice() {
     if (!feedback) return evaluate()
     const completedAnswers = [...answers, { question: q.text, answer, analysis: feedback }]
     if (step < questions.length - 1) { setAnswers(completedAnswers); setStep(step + 1); setAnswer(''); setFeedback(null); return }
-    setSaving(true); try { const response = await fetch('/api/v1/interviews/complete', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` }, body: JSON.stringify({ title: 'Lead through ambiguity', answers: completedAnswers }) }); const body = await response.json(); if (!response.ok) throw new Error(body.error?.message); localStorage.setItem('latestInterviewReport', JSON.stringify(body.data)); navigate('/reports') } catch (error) { alert(error.message || 'The report could not be saved.') } finally { setSaving(false) }
+    setSaving(true); try { const response = await fetch('/api/v1/interviews/complete', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` }, body: JSON.stringify({ title: 'Lead through ambiguity', answers: completedAnswers }) }); const body = await readApiResponse(response); if (!response.ok || body.error) throw new Error(body.error?.message); localStorage.setItem('latestInterviewReport', JSON.stringify(body.data)); navigate('/reports') } catch (error) { alert(error.message || 'The report could not be saved.') } finally { setSaving(false) }
   }
   if (!started) return <div className="page practice-intro"><div className="back">← Back to workspace</div><div className="intro-card"><span className="live-dot">✦</span><p className="eyebrow">ADAPTIVE INTERVIEW PRACTICE</p><h1>Practice for your next conversation.</h1><p className="intro-copy">Pick your role and experience level. Every session uses fresh questions and feedback is based only on your current answer.</p><div className="interview-settings"><label>Target role<select value={role} onChange={e => setRole(e.target.value)}><option>Product</option><option>Engineering</option></select></label><label>Experience<select value={experience} onChange={e => setExperience(e.target.value)}><option>Entry-level</option><option>Mid-level</option><option>Senior</option></select></label></div><div className="prep"><span>◎ Voice or text</span><span>◌ Inline AI review</span><span>⌁ Stored progress</span></div><button className="primary large" onClick={startInterview}>Enter the interview <span>→</span></button></div></div>
   return <div className="interview page"><header className="interview-top"><button className="close" onClick={() => navigate('/')}>×</button><div className="interview-meta"><span className="live"><i/> LIVE PRACTICE</span><span>·</span><span>16:42 remaining</span></div><button className="end" onClick={() => navigate('/reports')}>End session</button></header><div className="interview-body"><aside className="question-rail"><p className="eyebrow">INTERVIEW FLOW</p>{questions.map((item,i)=><div className={`question-step ${i===step?'current':''} ${i<step?'done':''}`} key={item.category}><i>{i<step?'✓':i+1}</i><span>{item.category}</span></div>)}<div className="privacy-note">⌁ Your responses are used only to create this coaching report.</div></aside><section className="conversation"><div className="ai-presence"><div className="pulse one"/><div className="pulse two"/><div className="core">✦</div></div><p className="eyebrow">NARRATE COACH</p><h1>Let’s start with a story.</h1><div className="question-card"><span>{q.category}</span><p>{q.text}</p></div><p className="hint">Coach hint: {q.hint}</p><div className="answer-box"><textarea value={answer} onChange={e=>setAnswer(e.target.value)} placeholder="Type your answer, or use the microphone…" autoFocus/><div><button className="mic" aria-label="Start voice answer">◉</button><span>{answer.length} characters</span><button className="submit-answer" disabled={!answer.trim()} onClick={next}>{step === questions.length - 1 ? 'Finish interview' : 'Continue'} <b>→</b></button></div></div></section><aside className="live-rail"><p className="eyebrow">IN THE MOMENT</p><div className="live-metric"><span>Answer pace</span><strong>Calm</strong><div><i style={{width:'68%'}}/></div></div><div className="live-metric"><span>Answer shape</span><strong>Building</strong><div><i style={{width:'45%'}}/></div></div><p className="live-copy">Live guidance stays light so you can keep your train of thought.</p></aside></div></div>
@@ -131,8 +139,8 @@ function Growth() { const points = useMemo(()=>[40,48,45,58,59,67,74],[]); retur
 
 const api = async (path, token) => {
   const response = await fetch(`/api/v1${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-  const body = await response.json()
-  if (!response.ok) throw new Error(body.error?.message || 'Request failed')
+  const body = await readApiResponse(response)
+  if (!response.ok || body.error) throw new Error(body.error?.message || 'Request failed')
   return body.data
 }
 
@@ -187,7 +195,7 @@ function AuthPage({ onAuthenticated }) {
     setBusy(true)
     try {
       const response = await fetch(`/api/v1/auth/${mode}`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name, email, password}) })
-      const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || 'Unable to continue.')
+      const body = await readApiResponse(response); if (!response.ok || body.error) throw new Error(body.error?.message || 'Unable to continue.')
       localStorage.setItem('interviewCoachSession', JSON.stringify(body.data)); onAuthenticated(body.data)
     } catch (error) { setMessage(error.message); setBusy(false) }
   }
@@ -224,7 +232,7 @@ function App() {
   useEffect(() => {
     if (!session?.token) { setCheckingSession(false); return }
     fetch('/api/v1/auth/me', { headers: { Authorization: `Bearer ${session.token}` } })
-      .then(async response => { if (!response.ok) throw new Error('Invalid session'); const body = await response.json(); const verified = { ...session, user: body.data }; localStorage.setItem('interviewCoachSession', JSON.stringify(verified)); setSession(verified) })
+      .then(async response => { const body = await readApiResponse(response); if (!response.ok || body.error) throw new Error('Invalid session'); const verified = { ...session, user: body.data }; localStorage.setItem('interviewCoachSession', JSON.stringify(verified)); setSession(verified) })
       .catch(() => { localStorage.removeItem('interviewCoachSession'); setSession(null) })
       .finally(() => setCheckingSession(false))
   }, [])

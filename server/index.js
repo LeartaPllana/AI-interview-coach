@@ -97,7 +97,10 @@ const growthSummary = rows => {
   return { totals: { evaluatedAnswers: points.length, averageScore: averages.score, trend, change, consistency: Math.min(100, Math.round(Math.min(points.length, 10) * 10 + Math.max(change, 0) / 2)) }, averages, points, strongest, weakest, recommendations: weakest.map(item => recommendationMap[item.key]), latest: points.at(-1) || null }
 }
 
-async function initialise() {
+let initialisePromise
+function initialise() {
+  if (initialisePromise) return initialisePromise
+  initialisePromise = (async () => {
   if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.JWT_SECRET) throw new Error('DB_HOST, DB_USER and JWT_SECRET are required in .env')
   if (!/^[A-Za-z0-9_]+$/.test(databaseName)) throw new Error('Invalid DB_NAME')
   const base = { host: process.env.DB_HOST, port: Number(process.env.DB_PORT || 3306), user: process.env.DB_USER, password: process.env.DB_PASSWORD }
@@ -108,6 +111,8 @@ async function initialise() {
   await pool.query(`CREATE TABLE IF NOT EXISTS reports (id CHAR(36) PRIMARY KEY, interview_id CHAR(36) NOT NULL UNIQUE, user_id CHAR(36) NOT NULL, overall_score TINYINT UNSIGNED NOT NULL, dimensions JSON NOT NULL, analysis JSON NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (interview_id) REFERENCES interviews(id) ON DELETE CASCADE, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)`)
   await pool.query(`CREATE TABLE IF NOT EXISTS answer_evaluations (id CHAR(36) PRIMARY KEY, user_id CHAR(36) NOT NULL, question TEXT NOT NULL, answer TEXT NOT NULL, score TINYINT UNSIGNED NOT NULL, metrics JSON NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, INDEX user_evaluations_created (user_id, created_at))`)
   if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) { const [found] = await pool.query('SELECT id FROM users WHERE email = ?', [process.env.ADMIN_EMAIL.toLowerCase()]); if (!found[0]) await pool.query('INSERT INTO users (id,name,email,password_hash,role) VALUES (?,?,?,?,?)', [crypto.randomUUID(), process.env.ADMIN_NAME || 'Administrator', process.env.ADMIN_EMAIL.toLowerCase(), hash(process.env.ADMIN_PASSWORD), 'admin']) }
+  })()
+  return initialisePromise
 }
 
 app.get('/api/v1/health', (_req, res) => res.json({ status: 'ok' }))
@@ -124,4 +129,10 @@ app.get('/api/v1/admin/users', auth(['admin']), async (_req,res,next)=>{try{cons
 app.get('/api/v1/admin/reports', auth(['admin']), async (_req,res,next)=>{try{const [rows]=await pool.query('SELECT r.id,r.overall_score AS overallScore,r.dimensions,r.analysis,r.created_at AS createdAt,i.title,u.name,u.email FROM reports r JOIN interviews i ON i.id=r.interview_id JOIN users u ON u.id=r.user_id ORDER BY r.created_at DESC');res.json({data:rows})}catch(error){next(error)}})
 app.use((_req,res)=>res.status(404).json({error:{message:'Resource not found.'}}))
 app.use((error,_req,res,_next)=>{console.error(error);res.status(500).json({error:{message:'Something went wrong.'}})})
-initialise().then(()=>app.listen(process.env.PORT||3001,()=>console.log(`API listening on ${process.env.PORT||3001}`))).catch(error=>{console.error(`Database startup failed: ${error.message}`);process.exit(1)})
+if (require.main === module) {
+  initialise()
+    .then(() => app.listen(process.env.PORT || 3001, () => console.log(`API listening on ${process.env.PORT || 3001}`)))
+    .catch(error => { console.error(`Database startup failed: ${error.message}`); process.exit(1) })
+}
+
+module.exports = { app, initialise }
